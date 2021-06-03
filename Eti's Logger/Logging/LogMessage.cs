@@ -424,6 +424,37 @@ namespace EtiLogger.Logging {
 			return result;
 		}
 
+		/// <summary>
+		/// Assuming this <see cref="LogMessage"/>'s components have one or more newlines in them (\n), this will split each line into its own distinct LogMessage.
+		/// </summary>
+		/// <returns></returns>
+		public LogMessage[] SplitByNewlines() {
+			if (Components.Count == 0) return new LogMessage[] { this };
+			string str = this.ToString();
+			if (!str[..^1].Contains('\n')) {
+				// has no newlines, when the end isn't counted
+				return new LogMessage[] { this };
+			}
+
+			List<LogMessage> messages = new List<LogMessage>();
+			// So first things first, set up data.
+			LogMessage currentConstruction = new LogMessage();
+			foreach (MessageComponent component in Components) {
+				MessageComponent[] pieces = component.SplitByNewlines();
+				currentConstruction.AddComponent(pieces[0]);
+				if (pieces.Length == 1) {
+					if (!messages.Contains(currentConstruction)) messages.Add(currentConstruction);
+					continue;
+				}
+				foreach (MessageComponent subPiece in pieces.Skip(1)) {
+					currentConstruction = new LogMessage();
+					currentConstruction.AddComponent(subPiece);
+					messages.Add(currentConstruction);
+				}
+			}
+			return messages.ToArray();
+		}
+
 		#endregion
 
 		#region Object Overrides
@@ -616,6 +647,30 @@ namespace EtiLogger.Logging {
 				string postClr = withoutColoring ? "" : Data.Structs.Color.GetVTForColor(new Color(192, 63, 63));
 
 				return $"[\n\t{preClr}Color=[{preClr}{color}{postClr}]\n\tBackgroundColor=[{preClr}{bgColor}{postClr}]\n\tIsBold=[{preClr}{bold}{postClr}]\n\tIsItalics=[{preClr}{italics}{postClr}]\n\tIsUnderline=[{preClr}{under}{postClr}]\n\tIsStrike=[{preClr}{strike}{postClr}]\n\tText={preClr}{Text}{postClr}\n]";
+			}
+
+			/// <summary>
+			/// Assuming <see cref="Text"/> has one or more newlines (\n), this will return an array of <see cref="MessageComponent"/>s with identical formatting, each one having text split by the newline char.
+			/// </summary>
+			/// <returns></returns>
+			public MessageComponent[] SplitByNewlines() {
+				// new test, if it ENDS in a newline then that's cool
+
+				if (!Text.Contains('\n')) return new MessageComponent[] { this };
+				List<MessageComponent> cmps = new List<MessageComponent>();
+				string[] segs = Text.Split('\n');
+				foreach (string seg in segs) {
+					cmps.Add(new MessageComponent(
+						seg + '\n',
+						Color,
+						BackgroundColor,
+						Bold,
+						Italics,
+						Underline,
+						Strike
+					));
+				}
+				return cmps.ToArray();
 			}
 
 			#endregion

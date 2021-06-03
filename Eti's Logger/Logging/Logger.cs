@@ -53,7 +53,7 @@ namespace EtiLogger.Logging {
 		/// </summary>
 		/// <param name="prefix">The text to set the log's prefix to.</param>
 		public Logger(string prefix) : this() {
-			LogPrefix = new LogMessage.MessageComponent(prefix, Color.WHITE);
+			LogPrefix = new LogMessage(prefix);
 		}
 
 		/// <summary>
@@ -61,6 +61,14 @@ namespace EtiLogger.Logging {
 		/// </summary>
 		/// <param name="styledPrefix"></param>
 		public Logger(LogMessage.MessageComponent styledPrefix) : this() {
+			LogPrefix = new LogMessage(styledPrefix);
+		}
+
+		/// <summary>
+		/// Creates a new <see cref="Logger"/> and sets <see cref="LogPrefix"/> to the given <see cref="LogMessage.MessageComponent"/> which may contain custom formats.
+		/// </summary>
+		/// <param name="styledPrefix"></param>
+		public Logger(LogMessage styledPrefix) : this() {
 			LogPrefix = styledPrefix;
 		}
 
@@ -185,11 +193,11 @@ namespace EtiLogger.Logging {
 		/// <strong>Default:</strong> <see langword="new"/> <see cref="LogMessage.MessageComponent"/>(<see cref="string.Empty"/>)<para/>
 		/// <strong>Note:</strong> Setting this to <see langword="null"/> will actually set it to the default. As such, this will never be <see langword="null"/>.
 		/// </summary>
-		public LogMessage.MessageComponent LogPrefix {
+		public LogMessage LogPrefix {
 			get => _LogPrefix;
-			set => _LogPrefix = value ?? new LogMessage.MessageComponent(string.Empty);
+			set => _LogPrefix = value ?? new LogMessage(string.Empty);
 		}
-		private LogMessage.MessageComponent _LogPrefix = new LogMessage.MessageComponent(string.Empty);
+		private LogMessage _LogPrefix = new LogMessage(string.Empty);
 
 		/// <summary>
 		/// If <see langword="true"/>, the timestamp will be omitted from the log.
@@ -204,12 +212,12 @@ namespace EtiLogger.Logging {
 		/// <summary>
 		/// If <see langword="true"/>, and if a message that is written to the log contains new lines, then the timestamp will be appended at the start of each line.
 		/// </summary>
-		public bool AddTimestampToAllNewlines { get; set; } = false;
+		public bool AddTimestampToAllNewlines { get; set; } = true;
 
 		/// <summary>
 		/// The prefix for <see cref="LogLevel.Info"/> messages.
 		/// </summary>
-		public string InfoPrefix { get; set; } = "[ OUT ] ";
+		public string InfoPrefix { get; set; } = "";//"[ OUT ] ";
 
 		/// <summary>
 		/// The prefix for <see cref="LogLevel.Debug"/> messages.
@@ -411,6 +419,12 @@ namespace EtiLogger.Logging {
 
 		#region Master Write Methods
 
+		#region For Locking
+
+		private readonly object LOCK = new object();
+
+		#endregion
+
 		/// <summary>
 		/// Log a complex <see cref="LogMessage"/> object on a single line.
 		/// </summary>
@@ -418,58 +432,44 @@ namespace EtiLogger.Logging {
 		/// <param name="alertSound">If true, this message will cause the console to beep.</param>
 		/// <param name="logLevel">The type of log message that this is. If this is <see langword="null"/>, <see cref="DefaultLevel"/> is used.</param>
 		public void Write(LogMessage message, LogLevel? logLevel = null, bool alertSound = false) {
-			string timestamp = GetFormattedTimestamp();
-			LogLevel trueLevel = logLevel.GetValueOrDefault(DefaultLevel);
-			Color headerColor = GetColorForLogLevel(trueLevel);
-			bool alreadyHasTimestampAtStart = false;
-
-			if (AddTimestampToAllNewlines) {
-				// This is where things get less than ideal to be honest.
-				// This is expensive.
-				string timestampFormatString = Color.GetFormatString(Color.DARK_GREEN, false, Color.BLACK, headerColor);
-				List<LogMessage.MessageComponent> components = new List<LogMessage.MessageComponent>();
-
-				Color lastNonNullFG = headerColor;
-				Color lastNonNullBG = Color.BLACK;
-				bool lastNonNullUnderline = false;
-
-				for (int idx = 0; idx < message.Components.Count; idx++) {
-					LogMessage.MessageComponent component = message.Components[idx];
-					lastNonNullFG = component.Color.GetValueOrDefault(lastNonNullFG);
-					lastNonNullBG = component.BackgroundColor.GetValueOrDefault(lastNonNullBG);
-					lastNonNullUnderline = component.Underline.GetValueOrDefault(lastNonNullUnderline);
-
-					if (!component.Text.Contains("\n")) {
-						components.Add(component);
-						continue;
-					}
-
-					string[] segments = component.Text.Split('\n');
-					for (int segIdx = 0; segIdx < segments.Length; segIdx++) {
-						string thisSegment = segments[segIdx];
-						LogMessage.MessageComponent cmp = new LogMessage.MessageComponent(timestampFormatString + timestamp + Color.GetFormatString(lastNonNullFG, lastNonNullUnderline, lastNonNullBG) + thisSegment + '\n');
-						components.Add(cmp);
-						if (components.Count == 1) alreadyHasTimestampAtStart = true;
-						// This means that the first component we added to the new list was split, and since ^ adds the timestamp, we already have a timestamp at the start of the message.
-					}
+			if (AddTimestampToAllNewlines && !NoTimestamp) {
+				LogMessage[] newMessages = message.SplitByNewlines();
+				foreach (LogMessage msg in newMessages) {
+					WriteWithoutNewlineCheck(msg, logLevel, alertSound);
+					alertSound = false; // So we don't spam.
 				}
-			}
-
-			bool noTimestamp = NoTimestamp || alreadyHasTimestampAtStart;
-			LogMessage newMsg;
-			if (IsVTEnabled) {
-				newMsg = new LogMessage(Color.VT_RESET);
 			} else {
-				newMsg = new LogMessage();
+				WriteWithoutNewlineCheck(message, logLevel, alertSound);
 			}
-			if (!noTimestamp) newMsg.AddComponent("§2" + timestamp);
-			newMsg.AddComponent(LogPrefix);
-			if (!NoLevel) newMsg.AddComponent(new LogMessage.MessageComponent(GetNameForLogLevel(trueLevel), headerColor));
-			newMsg.ConcatLocal(message);
+		}
 
-			bool shouldWrite = trueLevel <= LoggingLevel;
-			if (alertSound) Target.OnBeep(shouldWrite, this);
-			Target?.OnLogWritten(newMsg, trueLevel, shouldWrite, this);
+		/// <summary>
+		/// Internal method for writing a series of <see cref="LogMessage"/>s that have been split.
+		/// </summary>
+		protected internal void WriteWithoutNewlineCheck(LogMessage message, LogLevel? logLevel = null, bool alertSound = false) {
+			lock (LOCK) {
+				string timestamp = GetFormattedTimestamp();
+				LogLevel trueLevel = logLevel.GetValueOrDefault(DefaultLevel);
+				Color headerColor = GetColorForLogLevel(trueLevel);
+
+				LogMessage newMsg;
+				if (IsVTEnabled) {
+					newMsg = new LogMessage(Color.VT_RESET);
+				} else {
+					newMsg = new LogMessage();
+				}
+				if (!NoTimestamp)
+					newMsg.AddComponent("^#2b5439;" + timestamp);
+				newMsg = newMsg.ConcatLocal(LogPrefix);
+				if (!NoLevel)
+					newMsg.AddComponent(new LogMessage.MessageComponent(GetNameForLogLevel(trueLevel), headerColor));
+				newMsg.ConcatLocal(message);
+
+				bool shouldWrite = trueLevel <= LoggingLevel;
+				if (alertSound)
+					Target.OnBeep(shouldWrite, this);
+				Target?.OnLogWritten(newMsg, trueLevel, shouldWrite, this);
+			}
 		}
 
 		/// <summary>
@@ -479,10 +479,13 @@ namespace EtiLogger.Logging {
 		/// <param name="alertSound">If true, this message will cause the console to beep.</param>
 		/// <param name="logLevel">The type of log message that this is. If this is <see langword="null"/>, <see cref="DefaultLevel"/> is used.</param>
 		public void WriteRaw(string text, LogLevel? logLevel = null, bool alertSound = false) {
-			LogLevel trueLevel = logLevel.GetValueOrDefault(DefaultLevel);
-			bool shouldWrite = trueLevel <= LoggingLevel;
-			if (alertSound) Target.OnBeep(shouldWrite, this);
-			Target?.OnLogWritten(LogMessage.WithoutFormatting(text), trueLevel, shouldWrite, this);
+			lock (LOCK) {
+				LogLevel trueLevel = logLevel.GetValueOrDefault(DefaultLevel);
+				bool shouldWrite = trueLevel <= LoggingLevel;
+				if (alertSound)
+					Target.OnBeep(shouldWrite, this);
+				Target?.OnLogWritten(LogMessage.WithoutFormatting(text), trueLevel, shouldWrite, this);
+			}
 		}
 
 		#endregion

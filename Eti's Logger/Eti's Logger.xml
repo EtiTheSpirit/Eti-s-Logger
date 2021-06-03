@@ -374,6 +374,12 @@
             </summary>
             <param name="styledPrefix"></param>
         </member>
+        <member name="M:EtiLogger.Logging.Logger.#ctor(EtiLogger.Logging.LogMessage)">
+            <summary>
+            Creates a new <see cref="T:EtiLogger.Logging.Logger"/> and sets <see cref="P:EtiLogger.Logging.Logger.LogPrefix"/> to the given <see cref="T:EtiLogger.Logging.LogMessage.MessageComponent"/> which may contain custom formats.
+            </summary>
+            <param name="styledPrefix"></param>
+        </member>
         <member name="F:EtiLogger.Logging.Logger.CLASS_INIT_TIMESTAMP">
             <summary>
             The time when this class is initialized into memory. Used for the log file name. This value does not change.
@@ -603,6 +609,11 @@
             <param name="message">The <see cref="T:EtiLogger.Logging.LogMessage"/> to write.</param>
             <param name="alertSound">If true, this message will cause the console to beep.</param>
             <param name="logLevel">The type of log message that this is. If this is <see langword="null"/>, <see cref="P:EtiLogger.Logging.Logger.DefaultLevel"/> is used.</param>
+        </member>
+        <member name="M:EtiLogger.Logging.Logger.WriteWithoutNewlineCheck(EtiLogger.Logging.LogMessage,System.Nullable{EtiLogger.Logging.LogLevel},System.Boolean)">
+            <summary>
+            Internal method for writing a series of <see cref="T:EtiLogger.Logging.LogMessage"/>s that have been split.
+            </summary>
         </member>
         <member name="M:EtiLogger.Logging.Logger.WriteRaw(System.String,System.Nullable{EtiLogger.Logging.LogLevel},System.Boolean)">
             <summary>
@@ -843,6 +854,12 @@
             <returns></returns>
             <exception cref="T:System.ArgumentNullException"/>
         </member>
+        <member name="M:EtiLogger.Logging.LogMessage.SplitByNewlines">
+            <summary>
+            Assuming this <see cref="T:EtiLogger.Logging.LogMessage"/>'s components have one or more newlines in them (\n), this will split each line into its own distinct LogMessage.
+            </summary>
+            <returns></returns>
+        </member>
         <member name="M:EtiLogger.Logging.LogMessage.ToString">
             <summary>
             Returns the raw, plain-text included in this <see cref="T:EtiLogger.Logging.LogMessage"/> without any formatting codes.
@@ -936,6 +953,12 @@
             </remarks>
             <param name="addNewlines">Whether or not to use a larger (but easier to read) variant of this string that adds lines between each property.</param>
             <param name="withoutColoring">If <see langword="true"/>, no colors will be put into this message.</param>
+            <returns></returns>
+        </member>
+        <member name="M:EtiLogger.Logging.LogMessage.MessageComponent.SplitByNewlines">
+            <summary>
+            Assuming <see cref="P:EtiLogger.Logging.LogMessage.MessageComponent.Text"/> has one or more newlines (\n), this will return an array of <see cref="T:EtiLogger.Logging.LogMessage.MessageComponent"/>s with identical formatting, each one having text split by the newline char.
+            </summary>
             <returns></returns>
         </member>
         <member name="T:EtiLogger.Logging.Util.Defaults.ConsoleOutputRelay">
